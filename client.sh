@@ -8,11 +8,11 @@ cd $dirname
 . options.conf
 
 list_old_versions() {
-    echo "\n已有版本列表:";
-    ssh -i $ssh_pem root@$host "/usr/local/php/bin/php /data/autodeploy/server-list.php"
+    echo "已有版本列表:";
+    ssh -i $ssh_pem root@$host "bash /data/AutoDeploy/server.sh list"
 }
 
-deploy_dev() {
+deploy() {
     version=$1
 
     if [ -z "$version" ]; then echo "请输入版本号，如 2.0.2"; exit 1; fi
@@ -20,42 +20,39 @@ deploy_dev() {
     echo "即将开始上线..."
     sleep 2
 
-    datetime=$(date +"%Y%m%d%H%M%S")
-    
-    if [ ! -d "$baseDir" ]; then echo "baseDir 目录不存在，请查看配置文件修改"; exit 1; fi
 
-    ### 必须定位到当前目录
-    cd $baseDir
+    if [ ! -d "$project_dir" ]; then echo "project_dir 目录不存在，请查看配置文件修改"; exit 1; fi
+
+    if [ ! -d "$export_dir" ]; then echo "export_dir 目录不存在，请查看配置文件修改"; exit 1; fi
+
+    ### 定位到项目目录
+    cd $project_dir
+    git checkout master
 
     echo "即将开始导出文件..."
     sleep 3
+    
 
-    exportDir="$baseDir/${datetime}"
+    tarfile=master-$(git log --pretty=format:"%h" -1).tar.gz
+    export_file=$export_dir/$tarfile
 
-    svn export $devSvnUrl -q $exportDir
+    # 删除之前可能存在的文件
+    rm $export_file
 
-    if [ ! -d "$exportDir" ]; then echo "代码导出异常，请检查代码仓库是否可以正常导出"; exit 1; fi
-
-    tarfile=${datetime}.tar.gz
-
-    echo "即将开始打包文件 $tarfile ..."
-    sleep 3
-
-    ### 压缩代码目录，并排除部分目录
-    tar -cf ${datetime}.tar.gz  --exclude=storage --exclude=tests $datetime
-
+    # 导出文件
+    git archive --format tar.gz -o $export_file HEAD
 
     echo "即将开始上传..."
     sleep 3
 
     ### 上传压缩包到服务器
-    scp -i $ssh_pem $tarfile root@$host:/data/temp/
+    scp -i $ssh_pem $export_dir/$tarfile $username@$host:/data/temp/
 
     echo "即将开始部署..."
     sleep 5
 
     ### 远程执行部署
-    ssh -i $ssh_pem root@$_host "sh /data/autodeploy/server.sh $datetime $version"
+    ssh -i $ssh_pem $username@$host "bash /data/AutoDeploy/server.sh deploy $version $tarfile"
 }
 
 online() {
@@ -63,9 +60,8 @@ online() {
 
     if [ -z "$version" ]; then echo "请输入版本号，如 2.0.2"; exit 1; fi
 
-    ssh -i $ssh_pem root@$host "sh /data/autodeploy/server-online.sh $version"
+    ssh -i $ssh_pem $username@$host "bash /data/AutoDeploy/server.sh online $version"
 }
-
 
 
 case "$1" in
@@ -73,16 +69,16 @@ case "$1" in
         list_old_versions
     ;;
     'deploy')
-        deploy_dev $2
+        deploy $2
     ;;
     'online')
         online $2
     ;;
     *)
         echo ''
-        echo "usage: sh $filename list (查看现有的版本列表)"
-        echo "usage: sh $filename deploy \$version"
-        echo "usage: sh $filename online \$version"
+        echo "usage: bash $filename list (查看现有的版本列表)"
+        echo "usage: bash $filename deploy \$version"
+        echo "usage: bash $filename online \$version"
 
         list_old_versions
     ;;

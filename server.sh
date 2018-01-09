@@ -1,43 +1,57 @@
 #!/bin/bash
 
-datetime=$1
-version=$2
 
-#datetime="20170922153012"
-#version="2.0.1"
+list_old_versions() {
+    for key in `ls /data/devs/`;do
+        echo $key;
+    done
+}
 
-tarfile="${datetime}.tar.gz"
-echo $tarfile $version
+online() {
+    version=$1
 
-if [ -d /data/devs/$version ]; then echo "目录 $version 已存在"; exit 1; fi
+    rm -f /data/wwwroot/dev.com
+    ln -s /data/devs/$version /data/wwwroot/dev.com
+}
 
-# 创建临时目录
-mkdir /data/devs/temp
+deploy() {
+    version=$1
+    tarfile=$2
 
-# 将源码解压到临时目录
-tar xf /data/temp/$tarfile -C /data/devs/temp
+    echo $tarfile $version
 
-# 移动本次上线代码到新版本号目录
-mv /data/devs/temp/${datetime} /data/devs/$version
+    if [ -d /data/devs/$version ]; then echo "目录 $version 已存在"; exit 1; fi
 
-# 删除临时目录
-rm -Rf /data/devs/temp
+    # 将源码解压到指定版本目录
+    mkdir /data/devs/$version
+    tar xf /data/temp/$tarfile -C /data/devs/$version
 
-echo $version > /data/devs/$version/public/version.txt
+    # dev1.com 测试站会直接更新
+    # dev.com 在此时不更新
+    # dev1 测试OK之后再更新 dev，以避免dev异常影响其他同学的使用
+    rm /data/wwwroot/dev1.com
+    
+    if [ -d /data/devs/$version/public ]; then
+        ln -s /data/devs/$version/public /data/wwwroot/dev1.com
+    else
+        ln -s /data/devs/$version /data/wwwroot/dev1.com
+    fi
+    
 
-# copy vendor .env
-cp -R /data/devs/vendor /data/devs/$version/
-cp /data/devs/env.default /data/devs/$version/.env
+    echo "OK"
+}
 
-ln -s /data/devs/storage /data/devs/$version/storage
-
-# 设置内部缓存目录权限
-chmod -R 777 /data/devs/$version/bootstrap/cache
-
-# dev1.aiztou.com 测试站会直接更新
-# dev.aiztou.com 在此时不更新
-# dev1 测试OK之后再更新 dev，以避免dev异常影响其他同学的使用
-rm /data/wwwroot/dev1.com
-ln -s /data/devs/$version /data/wwwroot/dev1.com
-
-echo "OK"
+case "$1" in
+    'list')
+        list_old_versions
+    ;;
+    'deploy')
+        deploy $2 $3
+    ;;
+    'online')
+        online $2
+    ;;
+    *)
+        list_old_versions
+    ;;
+esac
